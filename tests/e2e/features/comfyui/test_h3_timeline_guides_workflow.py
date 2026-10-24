@@ -108,7 +108,7 @@ def test_timeline_workflow_defaults_and_portable_assets(workflow):
         "timeline_guides",
     }
     assert by_type["VLLMOmniDiffusionSampling"]["widgets_values"] == [1, 50, 1.0, 1.0, False, False, 42, "fixed"]
-    assert by_type["VLLMOmniMiniMaxH3Params"]["widgets_values"] == [3.0, 12.0]
+    assert by_type["VLLMOmniMiniMaxH3Params"]["widgets_values"] == [3.0, 12.0, "native"]
     save = by_type["SaveVideo"]
     assert _source(workflow, save, "video")[0] is generate
     assert save["widgets_values"] == ["video/MiniMax-H3-Timeline-Guides", "mp4", "h264"]
