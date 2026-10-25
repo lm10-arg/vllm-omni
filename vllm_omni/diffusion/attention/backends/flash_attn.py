@@ -375,6 +375,7 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
         elif context.mask_mode is not MaskMode.NONE:
             if (
                 context.causal is False
+                and context.mask_mode is MaskMode.PADDING
                 and attention_mask is not None
                 and attention_mask.ndim == 2
                 and _matches_rocm_aiter_masked_sdpa_fallback(query, key, value)
@@ -848,6 +849,7 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
             if (
                 self._kernel_variant == "aiter"
                 and not self.causal
+                and metadata_plan.mask_mode is MaskMode.PADDING
                 and attention_mask.ndim == 2
                 and _matches_rocm_aiter_masked_sdpa_fallback(query, key, value)
             ):

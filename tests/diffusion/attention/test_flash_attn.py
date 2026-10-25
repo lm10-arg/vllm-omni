@@ -1015,6 +1015,38 @@ def test_rocm_contract_mammoth_geometry_uses_sdpa_fallback(rocm_contract, mocker
 
 
 @pytest.mark.cpu
+@pytest.mark.parametrize(
+    ("published_mask_mode", "expected_path"),
+    [
+        (None, "rocm_runtime_mask_dependent"),
+        ("arbitrary", "rocm_masked_varlen"),
+    ],
+)
+def test_rocm_contract_mammoth_nonpadding_masks_stay_on_aiter(rocm_contract, published_mask_mode, expected_path):
+    impl, _, dense, packed = rocm_contract
+    query = torch.zeros(2, 8, 21, 120, dtype=torch.bfloat16)
+    key = torch.zeros(2, 8, 7, 120, dtype=torch.bfloat16)
+    value = torch.zeros_like(key)
+    mask = torch.arange(8)[None] < torch.tensor([[5], [8]])
+    extra = {} if published_mask_mode is None else {"attention_mask_mode": published_mask_mode}
+    metadata = AttentionMetadata(attn_mask=mask, extra=extra)
+
+    context = ExecutionContext(platform="rocm", require_fullgraph=True)
+    result = impl.resolve_execution_path(context, query, key, value, metadata)
+    assert result.path == expected_path
+    assert result.kernel_variant == "aiter"
+    assert result.support.status is SupportStatus.UNMIGRATED
+    assert result.compilation_mode is CompilationMode.EAGER_ONLY
+    assert result.requested_support(context).status is SupportStatus.UNSUPPORTED
+    output = impl.forward_hip(query, key, value, metadata)
+
+    assert output.shape == query.shape
+    assert impl._sdpa_fallback is None
+    dense.assert_not_called()
+    packed.assert_called_once()
+
+
+@pytest.mark.cpu
 def test_rocm_contract_multiple_packed_documents(rocm_contract):
     impl, query, dense, packed = rocm_contract
     cu = torch.tensor([0, 2, 4, 8], dtype=torch.int32)
