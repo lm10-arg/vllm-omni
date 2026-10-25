@@ -47,3 +47,28 @@ def test_multigpu_groups_keep_cuda_marks_and_add_rocm(monkeypatch, test_group, c
         cards_mark,
     }
     assert other_cards_mark not in names
+
+
+def test_unqualified_multigpu_model_keeps_cuda_marks_without_rocm(monkeypatch):
+    class FourDeviceForeignPlatform:
+        @staticmethod
+        def device_count() -> int:
+            return 4
+
+        @staticmethod
+        def is_cuda() -> bool:
+            return False
+
+    monkeypatch.setattr(case_filtering, "current_omni_platform", FourDeviceForeignPlatform())
+
+    marks = case_filtering.get_test_group_marks(
+        "LTX2Pipeline",
+        [DiffusionAccs.CFG_PARALLEL, DiffusionAccs.TENSOR_PARALLEL],
+        model_marks=None,
+        model_type_marker=ModelTypeMarker.DIFFUSION,
+        rocm_multigpu=False,
+    )
+    names = {mark.name for mark in marks}
+
+    assert names >= {"full_model", "diffusion", "L4", "B200", "cuda", "cards_4"}
+    assert names.isdisjoint({"MI325", "rocm"})

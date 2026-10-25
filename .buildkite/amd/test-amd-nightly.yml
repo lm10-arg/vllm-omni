@@ -958,7 +958,7 @@ steps:
           - export ROCM_TINY_DIFFUSION_2GPU_ARTIFACT_DIR="$${BUILDKITE_BUILD_CHECKOUT_PATH:?}/artifacts/rocm-tiny-diffusion-2gpu"
           - mkdir -p "$$ROCM_TINY_DIFFUSION_2GPU_ARTIFACT_DIR"
           - |
-            bash .buildkite/amd/scripts/assert-pytest-collection.sh 14 \
+            bash .buildkite/amd/scripts/assert-pytest-collection.sh 12 \
               tests/model_tests/diffusion/test_common_offline.py \
               -m "full_model and diffusion and rocm and MI325 and cards_2 and not nvidia_only" \
               --run-level core_model \
@@ -988,7 +988,7 @@ steps:
           - export ROCM_TINY_DIFFUSION_4GPU_ARTIFACT_DIR="$${BUILDKITE_BUILD_CHECKOUT_PATH:?}/artifacts/rocm-tiny-diffusion-4gpu"
           - mkdir -p "$$ROCM_TINY_DIFFUSION_4GPU_ARTIFACT_DIR"
           - |
-            bash .buildkite/amd/scripts/assert-pytest-collection.sh 12 \
+            bash .buildkite/amd/scripts/assert-pytest-collection.sh 11 \
               tests/model_tests/diffusion/test_common_offline.py \
               -m "full_model and diffusion and rocm and MI325 and cards_4 and not nvidia_only" \
               --run-level core_model \

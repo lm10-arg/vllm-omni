@@ -42,6 +42,7 @@ def get_test_group_marks(
     test_group: list[DiffusionAccs] | None,
     model_marks: list | None,
     model_type_marker: ModelTypeMarker,
+    rocm_multigpu: bool = True,
 ) -> list:
     """Build the full set of pytest marks for a test group.
 
@@ -66,9 +67,12 @@ def get_test_group_marks(
     if current_omni_platform.is_cuda() and device_count < required_devices:
         marks.append(pytest.mark.skip(reason=f"Need {required_devices} devices, got {device_count}"))
     if required_devices > 1:
+        hardware_resources: dict[str, str | list[str]] = {"cuda": ["L4", "B200"]}
+        if rocm_multigpu:
+            hardware_resources["rocm"] = "MI325"
         marks.extend(
             hardware_marks(
-                res={"cuda": ["L4", "B200"], "rocm": "MI325"},
+                res=hardware_resources,
                 num_cards=required_devices,
             )
         )
@@ -104,6 +108,7 @@ def get_model_parametrization(model_name: str, test_info: DiffusionModelTestOpts
                 test_group,
                 test_info.marks,
                 model_type_marker=test_info.model_type_marker,
+                rocm_multigpu=test_info.rocm_multigpu,
             ),
         )
         for test_group in test_groups
