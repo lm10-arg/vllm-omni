@@ -17,7 +17,6 @@ from vllm_omni.diffusion.attention.backends.registry import DiffusionAttentionBa
 from vllm_omni.diffusion.config import set_current_diffusion_config
 from vllm_omni.diffusion.data import OmniDiffusionConfig
 from vllm_omni.diffusion.models.mammoth_moda2.mammothmoda2_dit_model import (
-    AttnProcessor,
     Transformer2DModel,
     TransformerBlock,
     apply_real_rotary_emb,
@@ -139,89 +138,6 @@ def test_block_forward_hands_native_kv_heads_to_shared_layer(monkeypatch, modula
     assert k_shape == v_shape == (BATCH, SEQ, 2, block.head_dim)
     assert metadata is not None and metadata.attn_mask.dtype == torch.bool
     assert torch.equal(metadata.attn_mask, mask)
-    assert metadata.extra == {"attention_mask_mode": "padding"}
-
-
-def test_ragged_mammoth_geometry_routes_real_processor_to_rocm_sdpa(monkeypatch, mocker):
-    from types import SimpleNamespace
-
-    from vllm_omni.diffusion.attention.backends.flash_attn import FlashAttentionImpl
-    from vllm_omni.diffusion.attention.backends.utils import fa
-    from vllm_omni.diffusion.attention.capabilities import ExecutionContext
-
-    batch, seq_len, q_heads, kv_heads, head_dim = 2, 8, 21, 7, 120
-    q_dim = q_heads * head_dim
-    kv_dim = kv_heads * head_dim
-
-    class ZeroProjection(torch.nn.Module):
-        def __init__(self, output_dim):
-            super().__init__()
-            self.output_dim = output_dim
-
-        def forward(self, inputs):
-            return inputs.new_zeros((*inputs.shape[:-1], self.output_dim))
-
-    monkeypatch.setattr(fa, "IS_FLASH_ATTN_4", False)
-    monkeypatch.setattr(fa, "IS_AITER", True)
-    monkeypatch.setattr(fa, "HAS_FLASH_ATTN", True)
-    packed = mocker.Mock(side_effect=AssertionError("AITER packed dispatch must not run"))
-    monkeypatch.setattr(fa, "flash_attn_varlen_func", packed)
-
-    impl = FlashAttentionImpl(
-        num_heads=q_heads,
-        head_size=head_dim,
-        softmax_scale=head_dim**-0.5,
-        causal=False,
-        num_kv_heads=kv_heads,
-    )
-    fallback = mocker.Mock()
-    fallback.forward_hip.return_value = torch.ones(
-        batch,
-        seq_len,
-        q_heads,
-        head_dim,
-        dtype=torch.bfloat16,
-    )
-    impl._sdpa_fallback = fallback
-
-    def dispatch(query, key, value, metadata):
-        resolved = impl.resolve_execution_path(
-            ExecutionContext(platform="rocm", require_fullgraph=True),
-            query,
-            key,
-            value,
-            metadata,
-        )
-        assert resolved.backend == "SDPA"
-        assert resolved.path == "rocm_masked_sdpa_fallback"
-        return impl.forward_hip(query, key, value, metadata)
-
-    attn = SimpleNamespace(
-        heads=q_heads,
-        to_q=ZeroProjection(q_dim),
-        to_k=ZeroProjection(kv_dim),
-        to_v=ZeroProjection(kv_dim),
-        norm_q=torch.nn.Identity(),
-        norm_k=torch.nn.Identity(),
-        omni_attn=dispatch,
-        to_out=(torch.nn.Identity(), torch.nn.Identity()),
-    )
-    hidden = torch.zeros(batch, seq_len, q_dim, dtype=torch.bfloat16)
-    mask = torch.arange(seq_len)[None] < torch.tensor([[5], [seq_len]])
-
-    output = AttnProcessor()(
-        attn,
-        hidden_states=hidden,
-        encoder_hidden_states=hidden,
-        attention_mask=mask,
-    )
-
-    fallback.forward_hip.assert_called_once()
-    metadata = fallback.forward_hip.call_args.args[3]
-    assert metadata.extra == {"attention_mask_mode": "padding"}
-    packed.assert_not_called()
-    torch.testing.assert_close(output[mask], torch.ones_like(output[mask]))
-    torch.testing.assert_close(output[~mask], torch.zeros_like(output[~mask]))
 
 
 def test_empty_text_stream_skips_the_entire_context_refiner():

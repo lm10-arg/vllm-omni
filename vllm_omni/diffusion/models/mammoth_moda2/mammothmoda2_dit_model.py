@@ -436,11 +436,7 @@ class AttnProcessor:
         if attention_mask is not None:
             attention_mask = attention_mask.to(torch.bool)
 
-        attn_metadata = (
-            AttentionMetadata(attn_mask=attention_mask, extra={"attention_mask_mode": "padding"})
-            if attention_mask is not None
-            else None
-        )
+        attn_metadata = AttentionMetadata(attn_mask=attention_mask) if attention_mask is not None else None
         hidden_states = attn.omni_attn(query, key, value, attn_metadata)
 
         if attention_mask is not None:
