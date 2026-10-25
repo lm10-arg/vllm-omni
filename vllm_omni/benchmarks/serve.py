@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,20 @@ def _use_endpoint_backend_when_implicit(args: argparse.Namespace) -> None:
         args.backend = endpoint
 
 
+def _validate_fail_fast_on_timeout(args: argparse.Namespace) -> None:
+    if not getattr(args, "omni_fail_fast_on_timeout", False):
+        return
+    backend = getattr(args, "backend", None)
+    request_rate = float(getattr(args, "request_rate", math.inf))
+    self_timed = bool(getattr(args, "self_timed", False))
+    if backend != "openai-chat-omni" or request_rate != math.inf or self_timed:
+        raise ValueError(
+            "--omni-fail-fast-on-timeout requires --backend openai-chat-omni "
+            "with --request-rate inf and a non-self-timed workload; "
+            f"got backend={backend!r}, request_rate={request_rate!r}, self_timed={self_timed!r}"
+        )
+
+
 def main(args: argparse.Namespace) -> dict[str, Any]:
     if getattr(args, "seed_tts_wer_eval", False):
         os.environ["SEED_TTS_WER_EVAL"] = "1"
@@ -69,8 +84,9 @@ def main(args: argparse.Namespace) -> dict[str, Any]:
     request_timeout_s = getattr(args, "omni_request_timeout_s", None)
     if request_timeout_s is not None:
         set_request_timeout_s(request_timeout_s)
-    set_fail_fast_on_timeout(getattr(args, "omni_fail_fast_on_timeout", False))
     _use_endpoint_backend_when_implicit(args)
+    _validate_fail_fast_on_timeout(args)
+    set_fail_fast_on_timeout(getattr(args, "omni_fail_fast_on_timeout", False))
     set_print_stage(getattr(args, "print_stage", False))
     args.extra_body = maybe_enable_stage_metrics(
         getattr(args, "extra_body", None),

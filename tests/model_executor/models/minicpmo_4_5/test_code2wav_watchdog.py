@@ -79,6 +79,26 @@ def test_phase_update_resets_deadline() -> None:
         watchdog.close()
 
 
+def test_phase_update_replaces_previous_phase_details() -> None:
+    reported = threading.Event()
+    reports: list[Code2WavWatchdogReport] = []
+
+    def reporter(report: Code2WavWatchdogReport) -> None:
+        reports.append(report)
+        reported.set()
+
+    watchdog = Code2WavWatchdog(0.05, reporter=reporter)
+    try:
+        with watchdog.watch("decode/encoder", {"codec_frames": 12}):
+            watchdog.phase("decode/cfm", {"batch_size": 2})
+            assert reported.wait(1.0)
+        assert len(reports) == 1
+        assert reports[0].phase == "decode/cfm"
+        assert reports[0].details == {"batch_size": 2}
+    finally:
+        watchdog.close()
+
+
 def test_close_stops_monitor_thread() -> None:
     watchdog = Code2WavWatchdog(30.0)
     thread = watchdog._thread

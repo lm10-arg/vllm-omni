@@ -1534,6 +1534,19 @@ async def test_chat_timeout_is_structurally_marked(mocker: MockerFixture) -> Non
 
 
 @pytest.mark.asyncio
+async def test_chat_aiohttp_server_timeout_is_structurally_marked(mocker: MockerFixture) -> None:
+    session = mocker.Mock()
+    session.post.side_effect = patch.aiohttp.ServerTimeoutError("request deadline expired")
+
+    output = await async_request_openai_chat_omni_completions(_seed_tts_request_func_input(), session)
+
+    assert output.success is False
+    assert output.timed_out is True
+    assert output.cancelled_after_timeout is False
+    assert "ServerTimeoutError" in output.error
+
+
+@pytest.mark.asyncio
 async def test_timeout_gather_cancels_pending_tasks_and_retains_order(mocker: MockerFixture) -> None:
     pending_started = [asyncio.Event(), asyncio.Event()]
     cancellation_finished = [asyncio.Event(), asyncio.Event()]

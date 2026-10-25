@@ -200,7 +200,7 @@ class Code2WavWatchdog:
             if operation is None:
                 return
             operation.phase = str(phase)
-            operation.details = _bounded_details({**operation.details, **(details or {})})
+            operation.details = _bounded_details(details)
             operation.last_progress_at = time.monotonic()
             self._condition.notify_all()
 

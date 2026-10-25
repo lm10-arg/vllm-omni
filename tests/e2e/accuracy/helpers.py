@@ -238,6 +238,14 @@ def _validate_seed_tts(
     if setup:
         errs.append(f"Seed-TTS eval setup failed: {setup}")
         return errs
+    timed_out = int(result.get("timed_out_requests", 0) or 0)
+    cancelled = int(result.get("cancelled_after_timeout_requests", 0) or 0)
+    if timed_out or cancelled:
+        errs.append(
+            "Seed-TTS benchmark coverage is incomplete: "
+            f"timed_out_requests={timed_out}, cancelled_after_timeout_requests={cancelled}; "
+            "accuracy metrics exclude unsuccessful outputs."
+        )
     n = int(result.get("seed_tts_content_evaluated", 0) or 0)
     if n <= 0:
         errs.append("seed_tts_content_evaluated is 0 (enable --seed-tts-wer-eval and check PCM capture).")

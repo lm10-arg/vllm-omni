@@ -257,7 +257,8 @@ def add_multi_stage_cli_args(parser: argparse.ArgumentParser) -> None:
         default=False,
         help=(
             "After the first timed-out benchmark request, cancel all remaining queued or in-flight requests. "
-            "Completed outputs and partial result metrics are retained."
+            "Completed outputs and partial result metrics are retained. Supported only with "
+            "--backend openai-chat-omni, --request-rate inf, and non-self-timed workloads."
         ),
     )
 

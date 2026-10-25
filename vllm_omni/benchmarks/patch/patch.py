@@ -2266,7 +2266,7 @@ async def async_request_openai_chat_omni_completions(
                 await asyncio.sleep(retry_delay)
                 continue
             break
-        except (asyncio.TimeoutError, TimeoutError):
+        except (asyncio.TimeoutError, TimeoutError, aiohttp.ServerTimeoutError):
             output.success = False
             output.timed_out = True
             output.error = traceback.format_exc()
