@@ -110,12 +110,13 @@ Callers resolve again when execution metadata changes.
 The same `FLASH_ATTN` backend resolves MindIE paths on NPU and AITER paths on
 ROCm. Both examples report `UNMIGRATED`: their route is inspected, while hardware
 correctness and compilation remain unvalidated. `EAGER_ONLY` is an advisory
-default, not a measured compiler limitation. Existing execution is unchanged.
+default, not a measured compiler limitation. Existing execution is unchanged
+except for the targeted ROCm safeguard below.
 
 | Input | NPU / MindIE | ROCm / AITER |
 | --- | --- | --- |
 | Dense | `npu_dense` | `rocm_dense` |
-| Padding mask | `npu_masked`: expand the key mask to `[B, 1, Q, K]` | `rocm_masked_varlen`: unpad, call varlen attention, then restore rows |
+| Padding mask | `npu_masked`: expand the key mask to `[B, 1, Q, K]` | `rocm_masked_varlen`: unpad, call varlen attention, then restore rows; BF16 Q21/KV7/D120 temporarily routes to `rocm_masked_sdpa_fallback` |
 | Packed inputs | Opt-in `[real, pad]` contract; choose varlen or prefix-KV slicing from the environment | Forward complete packed-document boundaries to varlen attention |
 | Incomplete packing | Rebuild a mask when possible; otherwise reject before the kernel | Shared CUDA-like normalization rejects incomplete metadata |
 | Unpublished mask semantics | Route to the masked wrapper | Keep resolution runtime-dependent without reading mask values |
@@ -124,6 +125,12 @@ NPU resolution reuses `_resolve_packed_seq_npu`; ROCm reuses the metadata
 normalization used by dispatch. AITER identity comes from initialization rather
 than caller-provided context. Quantized, paged, piecewise, and parallel paths
 remain outside these worked examples.
+
+The ROCm masked-varlen BF16 geometry with 21 query heads, 7 K/V heads, and
+120-wide Q/K/V heads uses SDPA as a targeted correctness safeguard. Repeated
+MI325 failures produced corrupt or non-finite AITER output for this geometry;
+other AITER masked-varlen geometries retain their existing route while the
+upstream kernel repair is developed.
 
 The new L1 tests use CPU tensors and replace only vendor kernel calls. They
 check path identity, forwarded masks/boundaries, fallback rejection, and

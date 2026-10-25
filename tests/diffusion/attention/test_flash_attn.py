@@ -986,6 +986,35 @@ def test_rocm_contract_masked_unpadding(rocm_contract):
 
 
 @pytest.mark.cpu
+def test_rocm_contract_mammoth_geometry_uses_sdpa_fallback(rocm_contract, mocker):
+    impl, _, dense, packed = rocm_contract
+    query = torch.zeros(2, 8, 21, 120, dtype=torch.bfloat16)
+    key = torch.zeros(2, 8, 7, 120, dtype=torch.bfloat16)
+    value = torch.zeros_like(key)
+    mask = torch.arange(8)[None] < torch.tensor([[5], [8]])
+    metadata = AttentionMetadata(attn_mask=mask, extra={"attention_mask_mode": "padding"})
+
+    context = ExecutionContext(platform="rocm", require_fullgraph=True)
+    result = impl.resolve_execution_path(context, query, key, value, metadata)
+    assert result.backend == "SDPA"
+    assert result.path == "rocm_masked_sdpa_fallback"
+    assert result.kernel_variant is None
+    assert result.support.status is SupportStatus.UNMIGRATED
+    assert result.compilation_mode is CompilationMode.EAGER_ONLY
+    assert result.requested_support(context).status is SupportStatus.UNSUPPORTED
+
+    fallback = mocker.Mock()
+    fallback.forward_hip.return_value = torch.zeros_like(query)
+    impl._sdpa_fallback = fallback
+    output = impl.forward_hip(query, key, value, metadata)
+
+    torch.testing.assert_close(output, torch.zeros_like(query))
+    fallback.forward_hip.assert_called_once_with(query, key, value, metadata)
+    dense.assert_not_called()
+    packed.assert_not_called()
+
+
+@pytest.mark.cpu
 def test_rocm_contract_multiple_packed_documents(rocm_contract):
     impl, query, dense, packed = rocm_contract
     cu = torch.tensor([0, 2, 4, 8], dtype=torch.int32)

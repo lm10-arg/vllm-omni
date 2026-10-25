@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from vllm.logger import init_logger
 
 from vllm_omni.diffusion.attention.backends.abstract import AttentionBackend, AttentionImpl, AttentionMetadata
-from vllm_omni.diffusion.attention.backends.sdpa import _maybe_reshape_attn_mask
+from vllm_omni.diffusion.attention.backends.sdpa import SDPAImpl, _maybe_reshape_attn_mask
 from vllm_omni.diffusion.attention.backends.utils.piecewise_attn import (
     piecewise_attn,
     run_paged_piecewise_plan,
@@ -32,6 +32,20 @@ from vllm_omni.diffusion.config import get_current_diffusion_config_or_none
 from vllm_omni.platforms import current_omni_platform
 
 logger = init_logger(__name__)
+
+
+def _matches_rocm_aiter_masked_sdpa_fallback(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+) -> bool:
+    """Match the AITER masked-varlen geometry with observed corrupt output."""
+    return (
+        all(tensor.ndim == 4 and tensor.dtype == torch.bfloat16 for tensor in (query, key, value))
+        and query.shape[2:] == (21, 120)
+        and key.shape[2:] == (7, 120)
+        and value.shape[2:] == (7, 120)
+    )
 
 
 @cache
@@ -279,6 +293,7 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
         from vllm_omni.diffusion.attention.backends.utils.fa import IS_AITER, IS_FLASH_ATTN_4
 
         self._kernel_variant = "fa4" if IS_FLASH_ATTN_4 else "aiter" if IS_AITER else None
+        self._sdpa_fallback: SDPAImpl | None = None
         cfg = get_current_diffusion_config_or_none()
         self.fa_deterministic = bool(getattr(cfg, "fa_deterministic", False)) if cfg is not None else False
         if backend_kwargs:
@@ -306,7 +321,7 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
             kv_cache_dtype=metadata.extra.get("kv_cache_dtype"),
         )
         if context.platform == "rocm":
-            return self._resolve_rocm_execution_path(context)
+            return self._resolve_rocm_execution_path(context, query, key, value, metadata.attention_mask)
         result = _flash_attention_execution_path(context)
         if result.support.status is not SupportStatus.SUPPORTED:
             return result
@@ -335,7 +350,13 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
         return result
 
     @staticmethod
-    def _resolve_rocm_execution_path(context: ExecutionContext) -> ExecutionPathResult:
+    def _resolve_rocm_execution_path(
+        context: ExecutionContext,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attention_mask: torch.Tensor | None,
+    ) -> ExecutionPathResult:
         """Describe AITER dispatch; device and compiler validation is pending."""
         result = ExecutionPathResult.unmigrated("FLASH_ATTN", context, path="rocm_unverified")
         if (
@@ -352,6 +373,21 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
         elif context.mask_mode is MaskMode.UNKNOWN:
             path = "rocm_runtime_mask_dependent"
         elif context.mask_mode is not MaskMode.NONE:
+            if (
+                context.causal is False
+                and attention_mask is not None
+                and attention_mask.ndim == 2
+                and _matches_rocm_aiter_masked_sdpa_fallback(query, key, value)
+            ):
+                return replace(
+                    result,
+                    backend="SDPA",
+                    path="rocm_masked_sdpa_fallback",
+                    support=CapabilityResult.unmigrated(
+                        "SDPA safeguard for the AITER masked-varlen BF16 Q21/KV7/D120 geometry"
+                    ),
+                    kernel_variant=None,
+                )
             path = "rocm_masked_varlen"
         else:
             path = "rocm_dense"
@@ -424,6 +460,28 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
             "only the dense flash_attn_func path passes deterministic=True.",
             path,
         )
+
+    def _forward_rocm_aiter_masked_sdpa_fallback(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_metadata: AttentionMetadata | None,
+    ) -> torch.Tensor:
+        logger.warning_once(
+            "AITER masked-varlen attention is unsafe for BF16 Q21/KV7/D120; using SDPA for this geometry."
+        )
+        fallback = self._sdpa_fallback
+        if fallback is None:
+            fallback = SDPAImpl(
+                num_heads=query.shape[2],
+                head_size=query.shape[3],
+                softmax_scale=self.softmax_scale,
+                causal=self.causal,
+                num_kv_heads=key.shape[2],
+            )
+            self._sdpa_fallback = fallback
+        return fallback.forward_hip(query, key, value, attn_metadata)
 
     @staticmethod
     def _unwrap_flash_output(out: torch.Tensor | tuple[torch.Tensor, ...]) -> torch.Tensor:
@@ -787,6 +845,13 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
                 else metadata_plan.mask_mode is not MaskMode.NONE
             )
         if use_masked_path:
+            if (
+                self._kernel_variant == "aiter"
+                and not self.causal
+                and attention_mask.ndim == 2
+                and _matches_rocm_aiter_masked_sdpa_fallback(query, key, value)
+            ):
+                return self._forward_rocm_aiter_masked_sdpa_fallback(query, key, value, attn_metadata)
             self._warn_fa_deterministic_non_dense("masked-varlen")
             return self._forward_varlen_masked(
                 query,
@@ -1313,6 +1378,7 @@ class FlashAttentionImpl(AttentionImpl[AttentionMetadata]):
         """
         self._warn_fa_deterministic_non_dense("piecewise-npu")
         logger.debug("Using piecewise NPU attention for mixed causal/full mask")
+        assert attn_metadata.full_attn_spans is not None
         return piecewise_attn(
             query,
             key,
