@@ -439,6 +439,8 @@ def run_multimodal_generation(args, client: OpenAI) -> None:
                 modalities=output_modalities,
                 extra_body=payload["extra_body"],
                 stream=args.stream,
+                seed=SEED,
+                temperature=0,
             )
             for payload in request_payloads
         ]
@@ -453,6 +455,9 @@ def run_multimodal_generation(args, client: OpenAI) -> None:
         for chat_completion in chat_completions:
             request_id = getattr(chat_completion, "id", None)
             for choice in chat_completion.choices:
+                finish_reason = getattr(choice, "finish_reason", None)
+                if finish_reason is not None:
+                    print(f"Chat completion finish reason: {finish_reason}")
                 if choice.message.audio:
                     audio_data = base64.b64decode(choice.message.audio.data)
                     audio_file_path = make_audio_output_filename(request_id=request_id, index=count)
