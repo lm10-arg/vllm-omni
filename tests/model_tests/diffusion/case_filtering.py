@@ -28,9 +28,9 @@ from tests.model_tests.diffusion.config_types import (
 )
 from vllm_omni.platforms import current_omni_platform
 
-# These tests are intended to run on L4 GPUs since they test parallelism (i.e., need GPUs),
-# but are intended to be smoke tests that we can properly validate without real model
-# weights in the CI.
+# These parallelism smoke tests use tiny weights on CUDA L4/B200 and ROCm MI325
+# workers so they can validate multi-GPU wiring without downloading real model
+# weights in CI.
 #
 # As such, no DiffusionAccs may require more than 4 GPUs, since we would otherwise skip
 # them in the CI.
@@ -66,7 +66,12 @@ def get_test_group_marks(
     if current_omni_platform.is_cuda() and device_count < required_devices:
         marks.append(pytest.mark.skip(reason=f"Need {required_devices} devices, got {device_count}"))
     if required_devices > 1:
-        marks.extend(hardware_marks(res={"cuda": ["L4", "B200"]}, num_cards=required_devices))
+        marks.extend(
+            hardware_marks(
+                res={"cuda": ["L4", "B200"], "rocm": "MI325"},
+                num_cards=required_devices,
+            )
+        )
         marks.append(pytest.mark.full_model)
     else:
         marks.extend(hardware_marks(res={"cuda": "L4"}, num_cards=1))
