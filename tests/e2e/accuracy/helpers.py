@@ -538,6 +538,8 @@ def run_seed_tts(ns: argparse.Namespace, vllm: str) -> Path:
         argv.append("--seed-tts-wer-save-items")
     if ns.seed_tts_file_ref_audio:
         argv.append("--seed-tts-file-ref-audio")
+    if getattr(ns, "omni_fail_fast_on_timeout", False):
+        argv.append("--omni-fail-fast-on-timeout")
     extra_env = seed_tts_eval_env(ns)
     print("\n$", vllm, *argv, "\n", flush=True)
     _omni_acc_bench_core().run_vllm_bench_subprocess(vllm, argv, extra_env=extra_env)
@@ -572,6 +574,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="If set, forwarded to ``vllm bench serve`` (probe first request until success). "
         "Omit to use upstream default (typically skip).",
+    )
+    p.add_argument(
+        "--omni-fail-fast-on-timeout",
+        action="store_true",
+        help="Forward the benchmark timeout circuit breaker to Seed-TTS runs.",
     )
     p.add_argument(
         "--trust-remote-code",

@@ -129,6 +129,7 @@ def test_extend_omni_choices_updates_tracking_parser_shadow(dataset_name: str) -
     ("argv", "dest", "expected"),
     [
         (["--print-stage"], "print_stage", True),
+        (["--omni-fail-fast-on-timeout"], "omni_fail_fast_on_timeout", True),
         (["--daily-omni-input-mode", "audio"], "daily_omni_input_mode", "audio"),
         (["--omniinteract-subsets", "1qna"], "omniinteract_subsets", ["1qna"]),
         (["--seed-tts-locale", "zh"], "seed_tts_locale", "zh"),
@@ -156,6 +157,7 @@ def test_add_omni_args_preserves_implicit_defaults() -> None:
 
     args = parser.parse_args([])
     assert args.print_stage is False
+    assert args.omni_fail_fast_on_timeout is False
     assert args.daily_omni_input_mode == "all"
     assert args.omniinteract_subsets == ["1q1a", "1q1a_math", "1qna"]
     assert args.seed_tts_locale == "en"
@@ -533,6 +535,9 @@ def test_omni_request_timeout_s_flag_defaults_and_parses() -> None:
 
     args = parser.parse_args(["--omni-request-timeout-s", "3600"])
     assert args.omni_request_timeout_s == 3600.0
+
+    args = parser.parse_args(["--omni-fail-fast-on-timeout"])
+    assert args.omni_fail_fast_on_timeout is True
 
 
 def test_realtime_chat_choice_is_available_without_importing_runtime() -> None:
