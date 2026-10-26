@@ -196,3 +196,12 @@ def test_qwen3_omni_perf_counts_and_existing_baselines_are_preserved() -> None:
         baseline_keys = [set(params.get("baseline", {})) for config in configs for params in config["benchmark_params"]]
         assert baseline_keys == expected_baseline_keys[label]
         assert all("MI325" not in keys for keys in baseline_keys)
+
+    multi_replica = json.loads(PERF_CONFIGS["Qwen3-Omni Multi-Replica Perf"].read_text(encoding="utf-8"))[0]
+    assert multi_replica["server_params"]["extra_cli_args"] == [
+        "--async-chunk",
+        "--stage-init-timeout",
+        "1200",
+        "--init-timeout",
+        "1500",
+    ]
