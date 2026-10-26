@@ -77,6 +77,64 @@ def test_finished_length_capped_trims_unrepresented_final_token():
     assert payload["hidden_states"]["output"].shape[0] == len(output) - 1
 
 
+def test_cached_request_state_without_status_uses_stop_token_set():
+    """The production worker request has no status; detect its sampled EOS."""
+    prompt = [1, 2, 3]
+    output = [10, 11, 12]
+    request = SimpleNamespace(
+        request_id="r1",
+        prompt_token_ids=prompt,
+        output_token_ids=output,
+        all_token_ids=[*prompt, *output],
+        sampling_params=SimpleNamespace(
+            ignore_eos=False,
+            stop_token_ids=[],
+            eos_token_id=12,
+            _eos_token_id=None,
+            all_stop_token_ids=[],
+            _all_stop_token_ids=[],
+        ),
+    )
+    hidden = torch.arange(5 * 4, dtype=torch.float32).reshape(5, 4)
+
+    payload = thinker2talker_full_payload(
+        transfer_manager=None,
+        pooling_output={"hidden": hidden},
+        request=request,
+    )
+
+    assert payload is not None
+    assert payload["ids"]["output"] == output[:-1]
+    assert payload["hidden_states"]["output"].shape[0] == len(output) - 1
+
+
+def test_cached_request_state_without_status_reconciles_length_cap():
+    """Without a stop token, captured decode rows still bound shipped IDs."""
+    prompt = [1, 2, 3]
+    output = [10, 11, 12]
+    request = SimpleNamespace(
+        request_id="r1",
+        prompt_token_ids=prompt,
+        output_token_ids=output,
+        all_token_ids=[*prompt, *output],
+        sampling_params=SimpleNamespace(
+            ignore_eos=True,
+            stop_token_ids=[],
+        ),
+    )
+    hidden = torch.arange(5 * 4, dtype=torch.float32).reshape(5, 4)
+
+    payload = thinker2talker_full_payload(
+        transfer_manager=None,
+        pooling_output={"hidden": hidden},
+        request=request,
+    )
+
+    assert payload is not None
+    assert payload["ids"]["output"] == output[:-1]
+    assert payload["hidden_states"]["output"].shape[0] == len(output) - 1
+
+
 def test_missing_hidden_returns_none():
     """Defensive: pooling_output without "hidden" returns None."""
     request = _make_request([1, 2], [3], status_name="FINISHED_STOPPED")

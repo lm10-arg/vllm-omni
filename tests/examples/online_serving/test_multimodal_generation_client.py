@@ -22,6 +22,8 @@ class _Args:
     prompt: str = "Summarize the input."
     modalities: str = "audio,text"
     stream: bool = False
+    seed: int | None = None
+    temperature: float | None = None
     num_concurrent_requests: int = 1
     prompts: None = None
     speaker: None = None
@@ -40,16 +42,28 @@ def _load_client_module() -> ModuleType:
     return module
 
 
-def test_multimodal_generation_requests_are_deterministic(mocker) -> None:
+def _capture_request(mocker, args: _Args) -> dict:
     module = _load_client_module()
     completion = mocker.Mock(choices=[])
     create = mocker.Mock(return_value=completion)
     client = mocker.Mock()
     client.chat.completions.create = create
 
-    module.run_multimodal_generation(_Args(), client)
+    module.run_multimodal_generation(args, client)
 
     create.assert_called_once()
-    request = create.call_args.kwargs
-    assert request["seed"] == module.SEED == 42
+    return create.call_args.kwargs
+
+
+def test_multimodal_generation_omits_sampling_defaults(mocker) -> None:
+    request = _capture_request(mocker, _Args())
+
+    assert "seed" not in request
+    assert "temperature" not in request
+
+
+def test_multimodal_generation_forwards_explicit_sampling(mocker) -> None:
+    request = _capture_request(mocker, _Args(seed=42, temperature=0))
+
+    assert request["seed"] == 42
     assert request["temperature"] == 0

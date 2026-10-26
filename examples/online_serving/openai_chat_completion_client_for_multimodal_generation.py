@@ -12,8 +12,6 @@ from vllm.assets.audio import AudioAsset
 
 from vllm_omni.utils.tracking_parser import TrackingArgumentParser
 
-SEED = 42
-
 
 class QueryResult(NamedTuple):
     inputs: dict
@@ -426,6 +424,14 @@ def run_multimodal_generation(args, client: OpenAI) -> None:
             extra_body["speaker"] = per_req_speaker.strip()
         request_payloads.append({"prompt": prompt, "extra_body": extra_body})
 
+    sampling_options: dict[str, int | float] = {}
+    seed = getattr(args, "seed", None)
+    temperature = getattr(args, "temperature", None)
+    if seed is not None:
+        sampling_options["seed"] = seed
+    if temperature is not None:
+        sampling_options["temperature"] = temperature
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent_requests) as executor:
         # Submit multiple completion requests concurrently
         futures = [
@@ -439,8 +445,7 @@ def run_multimodal_generation(args, client: OpenAI) -> None:
                 modalities=output_modalities,
                 extra_body=payload["extra_body"],
                 stream=args.stream,
-                seed=SEED,
-                temperature=0,
+                **sampling_options,
             )
             for payload in request_payloads
         ]
@@ -549,6 +554,18 @@ def parse_args():
         "--stream",
         action="store_true",
         help="Stream the response.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional sampling seed. Omitted by default so the server controls sampling behavior.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Optional sampling temperature. Omitted by default so the server controls sampling behavior.",
     )
     parser.add_argument(
         "--num-concurrent-requests",
