@@ -74,7 +74,7 @@ def omni_server(request, run_level, tmp_path_factory):
     yield from iter_omni_server(request, run_level, omni_fixture_lock)
 
 
-@hardware_test(res={"cuda": "L4"}, num_cards=1)
+@hardware_test(res={"cuda": "L4", "rocm": "MI325"}, num_cards=1)
 def test_startup_lora_concurrent_speech(omni_server, online_client):
     online_client.send_audio_speech_request(
         {
@@ -90,7 +90,7 @@ def test_startup_lora_concurrent_speech(omni_server, online_client):
     )
 
 
-@hardware_test(res={"cuda": "L4"}, num_cards=1)
+@hardware_test(res={"cuda": "L4", "rocm": "MI325"}, num_cards=1)
 def test_startup_lora_streaming_speech(omni_server, online_client):
     online_client.send_audio_speech_request(
         {

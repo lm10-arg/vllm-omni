@@ -47,7 +47,7 @@ tts_server_params = [
 ]
 
 
-@hardware_test(res={"cuda": "L4", "npu": "A2"}, num_cards=1)
+@hardware_test(res={"cuda": "L4", "rocm": "MI325", "npu": "A2"}, num_cards=1)
 @pytest.mark.parametrize("omni_server", tts_server_params, indirect=True)
 def test_voice_clone_streaming_001(omni_server, online_client) -> None:
     """
@@ -72,7 +72,7 @@ def test_voice_clone_streaming_001(omni_server, online_client) -> None:
     online_client.send_audio_speech_request(request_config, request_num=MAX_CONCURRENT)
 
 
-@hardware_test(res={"cuda": "L4", "npu": "A2"}, num_cards=1)
+@hardware_test(res={"cuda": "L4", "rocm": "MI325", "npu": "A2"}, num_cards=1)
 @pytest.mark.parametrize("omni_server", tts_server_params, indirect=True)
 def test_response_format_001(omni_server, online_client) -> None:
     """
