@@ -252,13 +252,24 @@ class TestBagelLoRARoundTrip:
         # B weights should be 2.0 * scale(0.5) = 1.0
         assert torch.allclose(lora_b, torch.ones_like(lora_b)), f"lora_b should be 2.0 * 0.5 = 1.0, got {lora_b}"
 
-    def test_mot_qkv_full_path_adapter_binds_and_routes_to_text_tokens(self, tmp_path):
+    def test_mot_qkv_full_path_adapter_binds_and_routes_to_text_tokens(self, tmp_path, monkeypatch):
         """The production BAGEL MoT QKV path must bind without adapting VAE tokens."""
         from vllm.config import VllmConfig, set_current_vllm_config
+        from vllm.model_executor import parameter
+        from vllm.model_executor.layers import linear
 
         from vllm_omni.diffusion.models.bagel.mot.mot_qkv_parallel_linear import (
             MoTQKVParallelLinear,
             MoTQKVParallelLinearWithLoRA,
+        )
+
+        for module in (linear, parameter):
+            monkeypatch.setattr(module, "get_tensor_model_parallel_world_size", lambda: 1)
+            monkeypatch.setattr(module, "get_tensor_model_parallel_rank", lambda: 0)
+        monkeypatch.setattr(
+            linear,
+            "dispatch_unquantized_gemm",
+            lambda *_args, **_kwargs: lambda _layer, x, weight, bias=None: torch.nn.functional.linear(x, weight, bias),
         )
 
         module_name = "bagel.language_model.model.layers.0.self_attn.qkv_proj"
