@@ -271,6 +271,13 @@ class TestBagelLoRARoundTrip:
             "dispatch_unquantized_gemm",
             lambda *_args, **_kwargs: lambda _layer, x, weight, bias=None: torch.nn.functional.linear(x, weight, bias),
         )
+        # This regression intentionally drives CPU tensors even on accelerator
+        # runners. Keep the base MoT layer on its portable gather/scatter path
+        # instead of dispatching those tensors to the CUDA Triton kernel.
+        monkeypatch.setattr(
+            "vllm_omni.diffusion.models.bagel.mot.mot_qkv_parallel_linear.current_platform.is_cuda",
+            lambda: False,
+        )
 
         module_name = "bagel.language_model.model.layers.0.self_attn.qkv_proj"
         with set_current_vllm_config(VllmConfig()):
