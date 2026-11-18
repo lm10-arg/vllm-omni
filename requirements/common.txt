@@ -36,6 +36,9 @@ msgpack>=1.0.0
 msgspec
 # Confirm worker exit before releasing cross-process shared allocations.
 psutil>=5.9.0
+# Realtime reasoning uses RealtimeReasoning and the session reasoning field,
+# both introduced in the OpenAI Python SDK 2.36.0.
+openai>=2.36.0
 pydantic>=2.12.0
 pydantic-settings>=2.0.0
 # Required for GGUF-quantized diffusion model loading (gguf_adapters). The CI
